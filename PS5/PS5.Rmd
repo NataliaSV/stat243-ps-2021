@@ -1,0 +1,443 @@
+---
+title: "Problem Set 5"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+bibliography: bibliography.bib
+author: Natalia Sarabia Vasquez
+header-includes:
+   - \usepackage{float}
+   - \usepackage{hyperref}
+   - \usepackage{tcolorbox}
+   - \hypersetup{colorlinks, 
+                 urlcolor = blue,
+                 linkcolor = black, 
+                 citecolor = black}
+output: 
+  pdf_document:
+    citation_package: natbib
+    number_sections: true
+---
+  
+```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
+# Default setting
+knitr::opts_chunk$set(
+  echo = TRUE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  #fig.width = 3,  # set default width of figures
+  #fig.height = 3,  # set default height of figures
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)
+
+# load useful libraries
+library(reticulate)
+library(doFuture)
+library(future)
+library(readr)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(knitr)
+library(pryr)
+```
+
+# Problem 1
+```{r, echo=F, out.extra="page=1",out.height="74%"}
+knitr::include_graphics(file.path('..','PS5/problem1p5.pdf'))
+```
+
+```{r, echo=F, out.extra="page=2",out.width = "100%"}
+knitr::include_graphics(file.path('..','PS5/problem1p5.pdf'))
+```
+
+```{r, echo=F, out.extra="page=3",out.width = "100%"}
+knitr::include_graphics(file.path('..','PS5/problem1p5.pdf'))
+```
+
+```{r, echo=F, out.extra="page=4",out.width = "100%"}
+knitr::include_graphics(file.path('..','PS5/problem1p5.pdf'))
+```
+
+```{r, echo=F, out.extra="page=5",out.width = "100%"}
+knitr::include_graphics(file.path('..','PS5/problem1p5.pdf'))
+```
+
+```{r}
+# I will use the professor's function to format the output
+
+## Define a wrapper function for convenience:
+dg <- function(x, digits = 20) formatC(x, digits, format = 'f')
+```
+
+Confirm in R that what you have shown is consistent:
+```{r}
+a <- 2^53
+bits(2^53)
+
+b <- (2^53)+1
+bits((2^53)+1)
+
+c <- (2^53)-1
+bits((2^53)-1)
+
+# Note that actually a and b have the same bit-wise representation
+# That's why the difference is zero
+dg(b-a)
+# c can be represented exactly, therefore the difference between the two numbers is  not zero
+dg(a-c)
+
+# We can see the decimal representations for the numbers here:
+dg(a)
+dg(b)
+dg(c)
+```
+
+# Problem 2
+## Problem 2a
+How many digits of accuracy do we have? In general, we expect to have 16 digits of accuracy. In this particular example, if we store 1.000000000001, we expect to have 16 digits of accuracy, which means, we will have all the digits of the correct result (13 digits) plus three trailing zeroes, which result in 16 digits of accuracy.
+
+## Problem 2b
+In R, does the use of sum() give the right answer up to the accuracy expected from part (a)?
+Yes, it gives the expected accuracy (16 digits). We have to stop just before the 6, and round. This will give us 16 digits of accuracy.
+```{r}
+x <- c(1,rep(1e-16,10000))
+dg(sum(x))
+```
+
+## Problem 2c
+In Python, does the use of sum() give the right answer up to the accuracy expected from part (a)?
+
+No, it doesn't. I got 15 digits of accuracy.
+You have to stop in the last nine in order that, after rounding, obtain the correct answer. This means that we have 15 digits of accuracy.
+
+```{python}
+import numpy as np
+from decimal import *
+
+vec = np.array([1e-16]*(10001))
+vec[0] = 1
+
+# Default is 28 places
+Decimal(np.sum(vec))
+
+```
+
+## Problem 2d
+For loop to do the summation, R. Does this give the right answer? If either of these don’t give the right answer, how many decimal places of accuracy does the answer have?
+
+```{r}
+x <- c(1,rep(1e-16,10000))
+aux = x[1]
+
+for(i in seq_len(10000)){
+  aux = aux + x[i+1]
+}
+
+dg(aux)
+```
+
+For loop to do the summation, R. 1 as the last value of the vector:
+```{r}
+x <- c(rep(1e-16,10000),1)
+aux = x[1]
+
+for(i in seq_len(10000)){
+  aux = aux + x[i+1]
+}
+
+dg(aux)
+```
+
+In R, doing the calculation taking 1 as the first number of the sum gives us a wrong result. In this case, we have 12 digits of accuracy. When we take 1 as the last number of the sum, we get the 16 digits of accuracy. This is a clear example how computer arithmetic does not obey the associative and distributive laws.
+
+For loop to do the summation, Python:
+```{python}
+vec = np.array([1e-16]*(10001))
+vec[0] = 1
+
+aux = vec[0]
+
+for i in range(1,10001):
+  aux = aux + vec[i]
+  
+Decimal(aux)
+```
+
+For loop to do the summation, Python. 1 as the last value of the vector:
+```{python}
+vec = np.array([1e-16]*(10001))
+vec[10000] = 1
+
+aux = vec[0]
+
+for i in range(0,10001):
+  aux = aux + vec[i]
+  
+Decimal(aux)
+```
+In Python, doing the calculation taking 1 as the first number of the sum gives us a wrong result. In this case, we have 12 digits of accuracy if we consider the non-visible zeroes. When we take 1 as the last number of the sum, we get the 16 digits of accuracy.
+
+# Problem 3
+## Problem 3a
+In my assigned SCF Linux server arwen, I:  
+
+i. Copied the files to a subdirectory called tmp.
+```{r, eval=FALSE}
+# Login in my SCF account
+ssh natalia_sarabia10@arwen.berkeley.edu
+# Create a directory called tmp in my SCF
+mkdir tmp
+# Locate at the recent created directory
+cd tmp
+# Once there, copy all the files to my tmp directory in SCF
+scp /scratch/users/paciorek/wikistats/dated_2017_small/dated/*.gz* .
+```
+
+ii. Wrote efficient R code to, using foreach with the doFuture backend that, in parallel, read in the space delimited files and filter to only the rows that refer to pages where "Barack_Obama" appears in the page title.
+
+I did some extra steps to test my code before running with all the files. First, I moved two files to my local machine, and test my code sequentially in one of them. Once everything was working, I parallelized over the two. Finally, I was ready to run my whole code in the Linux server:
+
+```{r, eval=FALSE}
+############# Optional task ##############
+# This was not mandatory, but I did this as a good practice.
+# Back in my local machine...
+# Copy some of the files (2) to make some tests using R in my local machine
+
+# CAUTION: I will break the following two lines just to format. 
+# However, if I want to execute this, those breaklines should not be considered:
+scp natalia_sarabia10@arwen.berkeley.edu:~/tmp/part-00116.gz*
+  ~/Documents/STAT243/PS5/part-00116.gz*
+  
+scp natalia_sarabia10@arwen.berkeley.edu:~/tmp/part-00117.gz*
+  ~/Documents/STAT243/PS5/part-00117.gz*
+
+# Execute my code sequentially and the parallelization for two files (all this in R)
+# Once I know everything is working as expected, run the parallelization on my SCF machine
+#######################################
+
+# First, pass the R script (MyScript.R) to my SCF directory
+scp MyScript.R natalia_sarabia10@arwen.berkeley.edu:~/tmp/
+
+# Again, in my SCF account...
+# Locate myself in temp
+# I have to give the file permission to execute
+chmod u+x MyScript.R
+
+############# Optional task ##############
+## First, check that it runs in R
+# Initialize R
+R
+# Execute my modified script. Just for two files:
+source('MyScript.R')
+# Check in tmp, I must have my ouput Obama_matches.csv
+# First, I kill R
+q()
+# Once out of there, check my files
+ls
+less Obama_matches.csv
+#######################################
+
+###################### Working with all the files on my SCF machine
+## Now that I checked that it works fine in R, I can execute the whole
+# First, locate myself in tmp
+cd tmp
+
+# Run the script
+R CMD BATCH MyScript.R
+
+# Send the output to my local machine 
+# I have to be in my local machine to run this
+scp natalia_sarabia10@arwen.berkeley.edu:~/tmp/Obama* ~/Documents/STAT243/PS5/.
+
+```
+
+Here is my script, MyScript.R
+
+```{r, eval=FALSE, code = readLines(file.path('..','PS5/MyScript.R'))}
+```
+
+iii. My R script generates a .csv with the collected data. It also generates the plot. I transferred both outputs to my local machine to show that my script works properly.
+
+```{r}
+Obama <- read_csv(file.path('..','PS5/Obama.csv')) %>%
+  mutate(hour = round(time/10000),
+         date = ISOdate(2008,11,04,hour,0,0,tz="GMT")) %>%
+  group_by(date) %>%
+  summarise(n_hits = sum(n_hits,na.rm = TRUE)/1000)
+
+head(Obama, n = 10)
+```
+
+```{r 3iii, fig.cap = "Hits to websites containing 'Barack Obama'",out.width = "60%",out.height = "50%"}
+include_graphics(file.path('..','PS5/Obama.png'))
+```
+
+I show what I ran in my SCF account:
+```{r 3a, fig.cap = "Part a",out.width = "70%"}
+include_graphics(file.path('..','PS5/P3a.png'))
+```
+
+## Problem 3b
+
+My ObamaBatch file looks like:
+```{r, eval=FALSE}
+#!/bin/bash
+
+####################
+# SBATCH OPTIONS
+####################
+#SBATCH --job-name=Obama                # job name fore queue, default may be u$
+#SBATCH --partition=low                 # high/low/gpu, default if empty is low
+#SBATCH --error=Obama.err               # error file, default if empty is slurm$
+#SBATCH --output=Obama.out              # standard out file, no default
+#SBATCH --time=00:15:00                 # optional, max runtime of job hrs:min:sec
+#SBATCH --nodes=1                       # only use 1 node, MPI option
+#SBATCH --ntasks=1                      # how many tasks to start
+#SBATCH --cpus-per-task=4               # number of cores to use, multi-core/mu$
+
+####################
+# What to run
+####################
+
+scp /scratch/users/paciorek/wikistats/dated_2017_small/dated/*.gz* temp/
+R CMD BATCH MyScript.R MyScript.Rout
+```
+
+```{r, eval=FALSE}
+################ Part b ################
+# First, in my local machine, modify the ObamaBatch file:
+# Set a limit time and the number of cores, job name, standard out and error out
+# files. Also the run time of the job, and the number of cores to use.
+# The file must have the line including the instruction to copy the files
+
+# Save, change name and send it to your SCF account
+scp ObamaBatch natalia_sarabia10@arwen.berkeley.edu:~/tmp/
+
+# Execute the file in your SCF account
+sbatch ObamaBatch
+
+# Monitor your job
+squeue -u natalia_sarabia10
+
+# Check that the file contains the desired output
+cat Obama.csv | head -n 10
+
+# Check that the code was actually executed -> Obama's files created:
+ls
+```
+
+I add a screenshot of my command line while running the code above. First, I removed all the files created in 3a and then I executed my R script, using sbatch again. I monitored the job. When it finished, I check that my directory contained the desired output files, and it does. They have the desired output:
+```{r 3b, fig.cap = "Part b",out.width = "100%",out.height = "150%"}
+include_graphics(file.path('..','PS5/P3b.png'))
+```
+
+# Problem 4
+a) What are the goals of their simulation study and what are the metrics that they consider in assessing their method?  
+
+The researchers wanted to investigate finite samples properties of the estimators that were derived in earlier sections of their paper (Section 2 and 3) using Monte Carlo simulation. They studied time invariant and time-dependent coefficients. They also performed a comparison with last value carried forward method. The metrics employed to evaluate the accuracies of the asymptotic approximations were the empirical bias ('Bias'), the bias divided by the true $\beta_1$ ('RB') and the sample standard deviation ('SD'). They also calculated a model-based standard error and the corresponding 0.95 confidence interval based on the normal approximation, that is, the average of the standard error estimates ('SE') and the coverage probability of the 95% confidence interval for $\beta_1$. 
+
+b) What choices did the authors have to make in designing their simulation study? What are the key aspects of the data generating mechanism that might affect their assessment of their method?  
+
+In the time invariant coefficient framework: They have to decide (set fixed) different aspects. For instance, the number of generated datasets, the number of subjects in each of them, the values for $\beta_1$ and $\beta_0$ (although they mentioned that they got similar results for different values of $\beta_S$). They also chose the Epanechnikov kernel, although they mentioned that similar results are obtained by using other kernels. In the case of the time-dependent coefficient, the simulation set-up is identical. Similarly, they chose to use some bandwiths. They also considered a wide range of functional forms for their comparison with last value carried forward method. In their work, they also talk about some distributions and specific parameters of them. Their distributions, given knowledge of the subjects, "generate" data that is similar to the one I can obtain in real life if I measure the problem.  
+
+The key aspects that can might affect their assessment of the method are the parameters of the distributions used to generate the data, the distributions they used (Poisson(5), Uniform). Also, the number of replications, the models employed and the sample sizes.
+
+c) Consider their Tables 1 and 3 reporting the simulation results. For a method to be a good method, what would one want to see numerically in these columns?  
+
+I would like to see that as the sample size increases the bias decreases. That the empirical and model based SE tend to be similar. In general, that the performance of the estimator increases when the sample size increase. I am also looking for SE and SD small and that the coverage probability will be close to 95%, if this does not happen in many repetitions, the interval is not capturing the true parameter. From the tables of the document, I see that the time invariant coefficient and the time-dependent coefficient, most of these properties are satisfied, although there are some marginal differences. However, when comparing to the last value carried forward method, everything changes. Here the bias is considerable and the performance does not improves as the sample size increases. Also, as the variance decreases as n increases, the coverage probability decreases also and is not near the 95% level.
+
+# Extra credit
+a) By experimentation in R, find the base 10 representation of the smallest positive number that can be represented in R.  
+
+In class, we saw that the smallest exponent that we can have is -1022, therefore the smallest positive normalized number is 1 * 2^-1022 $\approx$ 2.2 * 10^-308 (.Machine$double.xmin). Let's start with this approach:
+```{r}
+.Machine$double.xmin
+
+# The binary representation makes sense. Our number has an exponent of -1022. If we
+# see closer, it appears that this is the smallest representation of the exponent.
+# But what if all the bits of the exponent are zeroes? 
+bits(2^-1022)
+
+# What happens when all the bits of the exponents are zeroes? Can this number be
+# represented in a computer?
+bits(2^-1023)
+
+# If the answer is yes, then we would have to work with their exponents in order to
+# solve our problem: 
+2^-1024
+
+# WOW! It turns out that it has an actual representation... how far I can go?
+# Well, if I had a fixed exponent of -1022, maybe I can go until -1074 (51's zeroes
+# followed by a one, which corresponds to 2^-52. Therefore (2^-52)*(2^-1022) = 
+# (2^-1074)). Let's see:
+2^-1074
+bits(2^-1074)
+
+# Approximately, in base 10:  4.940656e-324 -> 4.9 * 10^-324
+2^-1074
+
+# What happens if I try to go even smaller, I guess it will underflow, but let's see.
+# Until here, was pure logic, let's just try one more case, just to see if something
+# new happens:
+2^-1075
+bits(2^-1075)
+
+# I overflowed. So, everything checks, the smallest number I can represent is
+# 2^-1074 or 4.9 * 10^-324 in base 10. I have to be careful with the language. This #
+# number is not normalized (meaning it does not take into account the number one at 
+# the beginning, the one that we do not need to represent in bits), that's why it 
+# is different from the smallest normalized number.
+```
+ 
+b) Explain how it can be that we can store a number smaller than 1 * 2^-1022.
+
+Well, I guess the intuition was given in a. In the floating point representation there are normalized and not normalized representations for the numbers. This means, that for not normalized numbers, all the bits of my exponent will be zero. Also, the "initial" one we were taking for the normalized case will be zero in this case.
+
+Following the points given in the instructions (that actually were followed in a):
+```{r}
+# Smallest number we saw in class:
+bits(2^-1022)
+
+# We also have a bit-wise representation for 2^-1023:
+# Decimal
+2^-1023
+bits(2^-1023)
+
+# If everything would have ended here, the bit-wise representation would have been 
+# just zeroes (as when we try to represent bits (2^-1075)), and we would have expect 
+# an underflow and the well-known zero. However, that is not happening and actually 
+# we are able to represent even smaller numbers.
+
+# It is interesting that all the digits in the exponent are zeroes. So this idea is
+# the biggest clue, in my opinion. We can have smaller numbers if we set all the bits
+# in the exponent to be zeroes, what means an exponent of 2^-1022 multiplied by 
+# 2^-something. This results in adding the exponents and that means smaller numbers  
+# representation. The 'something' part is given by 2^-a, and a goes from left to 
+# right and increases, in magnitude, by one every place.
+
+2^-1024
+bits(2^-1024)
+
+# I can continue this logic, another example:
+2^-1030
+# And it has 'activated' the 8th place as expected, the rest are zeroes:
+bits(2^-1030)
+
+# Therefore, following all the ideas from a and b so far, the smallest number 
+# must be all zeroes, except the last one. In other words, 51's zeroes followed by a 
+# one. 
+# That would be 2^-1022 multiplied by 2^-52, that gives us 2^-1074!
+
+# Decimal representation: 4.940656e-324 -> 4.9 * 10^-324
+2^-1074
+# Bits representation
+bits(2^-1074)
+
+# As we saw before, everything ends with 2^-1075. Here, R cannot represent 
+# anything smaller (64 bit-wise representation constrain). Then, I finally underflow:
+bits(2^-1075)
+2^-1075
+```
+
+

@@ -1,0 +1,484 @@
+---
+title: "Problem Set 6"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+bibliography: bibliography.bib
+author: Natalia Sarabia Vasquez
+header-includes:
+   - \usepackage{float}
+   - \usepackage{hyperref}
+   - \usepackage{tcolorbox}
+   - \usepackage{bbm}
+   - \hypersetup{colorlinks, 
+                 urlcolor = blue,
+                 linkcolor = black, 
+                 citecolor = black}
+output: 
+  pdf_document:
+    citation_package: natbib
+    number_sections: true
+---
+  
+```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
+# Default setting
+knitr::opts_chunk$set(
+  echo = TRUE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)
+
+# load useful libraries
+library(reticulate)
+library(RSQLite)
+library(knitr)
+```
+
+# Problem 1
+
+## First part of the problem
+
+I will connect to the database:
+```{r}
+drv <- dbDriver("SQLite")
+dir <- 'data' 
+
+# Path of the database
+dbFilename <- 'stackoverflow-2016.db'
+
+# Connect to the database
+db <- dbConnect(drv, dbname = file.path(dir, dbFilename))
+
+# Which tables are included in our database set up
+dbListTables(db)
+
+# What fields does each table include?
+dbListFields(db,'questions')
+dbListFields(db,'users')
+```
+
+I will describe how I arrived to my final query:  
+
+A question can have a tag for R, or for Python or for both (and of course, of other languages). I am asked to find all the users that have asked at least one question of R and at least question of Python.  
+
+The way I thought about this problem is the following. First, I have to find the labels associated to each question and filter just the questions that at least have one of the labels I am interested on, that is 'R' or 'Python'. Then, I will summarize the information grouping by ownerid and tag (tag = 'Python' or 'R') and count this observations. For me, the result of the count is not important (for instance, I could have calculated the mean, etc.), this step is just an auxiliary step to know if a user have asked questions of Python, or R or both:
+
+```{r}
+# How I constructed my query step-by-step:
+# Here, I did what I just described. I performed a join between the tables 
+# questions_tags and questions to associate each question with its tags. Then, I 
+# filtered those I am interested on: Python and R related questions. Finally, I 
+# grouped by ownerid (the person who asked the question) and the tag:
+
+subquery <- dbGetQuery(db,     "SELECT ownerid, tag, count(*) as count
+                               FROM questions
+                               LEFT JOIN questions_tags
+                               ON questions.questionid = questions_tags.questionid
+                               WHERE (tag == 'python') OR (tag == 'r')
+                               GROUP BY ownerid, tag")
+# Here is how it looks like:
+head(subquery, n = 16)
+```
+For instance, after seeing the table, I know I will be interested in user 688 (because she has a row for Python and a row for R). She will be the only user I want to keep from the 16 I rows I showed, supposing that was the entire table.
+
+I will generalize this idea and apply it to my big table. I observed that the data table contains missing values in the column 'ownerid' so I will remove them. The next step is to group the table by ownerid and count how many rows I have per 'ownerid'. This time the counting is important. I would like to keep those users which count is exactly equal to two (they have asked questions at least one question of R and at least one question of Python, one of their questions could have both labels, but my solution also incorporates this case): 
+
+```{r}
+# The final query uses the subquery I performed in the last chunk. Now, I will count 
+# the users that appear two times in my subquery. That will mean that they have 
+# asked questions with both tags or at least one including each tag:
+
+query <- dbGetQuery(db, "SELECT ownerid, count(*) as count2
+                       FROM    (SELECT ownerid, tag, count(*) as count
+                               FROM questions
+                               LEFT JOIN questions_tags
+                               ON questions.questionid = questions_tags.questionid
+                               WHERE (tag == 'python') OR (tag == 'r')
+                               GROUP BY ownerid, tag)
+                       WHERE ownerid IS NOT NULL
+                       GROUP BY ownerid
+                       HAVING count2 == 2")
+
+head(query, n = 10)
+```
+### Putting all together:
+Finally, I just have to count the rows:
+```{r}
+# I included an extra count just to use pure SQL syntax. Note that it was no 
+# necessary. I could have complete my query and then use R syntax to count it. 
+# An nrow() would be enough. Therefore, the outer select just counts and 
+# computes the answer I was asked:
+
+python_r <- dbGetQuery(db, " SELECT count(*)
+                          FROM    (SELECT ownerid, count(*) as count2
+                                   FROM    (SELECT ownerid, tag, count(*) as count
+                                           FROM questions
+                                           LEFT JOIN questions_tags
+                                ON questions.questionid = questions_tags.questionid
+                                           WHERE (tag == 'python') OR (tag == 'r')
+                                           GROUP BY ownerid, tag)
+                                   WHERE ownerid IS NOT NULL
+                                   GROUP BY ownerid
+                                   HAVING count2 == 2)")
+
+python_r
+```
+
+Finally, I have 2,567 users who have asked at least one question of R and at least one question of Python, and also the users who asked a question with both tags.
+
+## Second part of the problem
+For the second part of the problem, I am interested in removing the users who asked questions that have both tags. It is clear that the query I used to solve the first problem will be exactly the same. What I need to modify is one of the sets I am performing the first join. In other words, I have to create a filtered version of questions_tags table.
+
+First, I will keep only the questions that have the tag 'R' or 'Python', but not both. That is, from the table questions_tags, I will filter the questions with tags 'R', 'Python' or both and then group by questionid and count how many tags a question has. I am interested in the questions with ONE tag (of the possible ones 'R' or 'Python', meaning I don't want questions associated to these two tags):
+
+```{r}
+# From questions_tags I filter by the tag 'R' or 'Python'. Then, I group by questionid
+# and will keep just the questions associated to one label (thus, eliminating the 
+# ones associated to both labels):
+
+query <- dbGetQuery(db, "SELECT questionid, count(*) as count
+                               FROM questions_tags
+                               WHERE (tag == 'python') OR (tag == 'r')
+                               GROUP BY questionid
+                               HAVING count == 1")
+
+head(query, n = 10)
+```
+
+Once filtered, my idea is to 'generate' a new version of the table 'questions_tags' containing only the questionid and the tags of the questions that do not include both 'Python' and 'R' tags. This will be my new version of the 'questions_tags' table and the one I will use in my original query to obtain the desired output:
+```{r}
+# Here I created my filtered version of the table questions_tags. I will use the
+# subquery described in the last chunk. Then, I will perform a left join between the 
+# two tables to add the column tag. Again, I just kept relevant tags:
+query <- dbGetQuery(db, "SELECT aux.questionid, tag
+                               FROM (SELECT questionid, count(*) as count
+                                    FROM questions_tags
+                                    WHERE (tag == 'python') OR (tag == 'r')
+                                    GROUP BY questionid
+                                    HAVING count == 1) as aux
+                               JOIN questions_tags
+                               ON aux.questionid = questions_tags.questionid
+                               WHERE (tag == 'python') OR (tag == 'r')")
+
+head(query, n = 10)
+```
+### Putting all together:
+Next step, I will create the view of the query I described in the last chunk. And finally, execute my query for the first part of the problem in this new version of the table questions_tags (VIEW oneTag): 
+```{r}
+# To remove the view from my prevois executions. This is not necessary if you 
+# do not have a VIEW called oneTag in memory:
+dbExecute(db,"DROP VIEW oneTag")
+
+# I create my new version of the table questions_tags using a view:
+dbExecute(db, "CREATE VIEW oneTag as 
+                               SELECT aux.questionid, tag
+                               FROM (SELECT questionid, count(*) as count
+                                    FROM questions_tags
+                                    WHERE (tag == 'python') OR (tag == 'r')
+                                    GROUP BY questionid
+                                    HAVING count == 1) as aux
+                               JOIN questions_tags
+                               ON aux.questionid = questions_tags.questionid
+                               WHERE (tag == 'python') OR (tag == 'r')")
+
+# And then execute my old query just changing the questions_tags table by its new
+# version (oneTag):
+query <- dbGetQuery(db, "SELECT count(*)
+                         FROM    (SELECT ownerid, count(*) as count2
+                                 FROM    (SELECT ownerid, tag, count(*) as count
+                                         FROM questions
+                                         LEFT JOIN oneTag
+                                         ON questions.questionid = oneTag.questionid
+                                         WHERE (tag == 'python') OR (tag == 'r')
+                                         GROUP BY ownerid, tag)
+                                 WHERE ownerid IS NOT NULL
+                                 GROUP BY ownerid
+                                 HAVING count2 == 2)")
+
+query
+
+```
+
+Finally, I have 2,221 users who have asked at least one question of R and at least one question of Python, excluding the users who asked a question with both tags.
+
+# Problem 2
+
+I first worked on my Python script in my local computer using Spyder:
+```{r, eval=FALSE, code = readLines(file.path('..','PS6/MyScript.py'))}
+```
+
+I also setup my Obama file that will help me to execute MyScript.py:
+```{r, eval=FALSE, code = readLines(file.path('..','PS6/Obama'))}
+```
+
+After this, I copied two files from '/var/local/s243/wikistats/dated_2017/' to my arwen machine. I sent MyScript.py and Obama (batch) files to my arwen account and I executed my script (changing the path to my local computer) on these two files to test everything was working as expected. I adjusted MyScript.py (set the path of all the files) and then I ran my script in all the files:
+```{r, eval = FALSE}
+# reticulate::py_install("pandas")
+
+# While at my local machine, I sent MyScript.py and Obama  (batch) to my arwen account:
+scp MyScript.py Obama natalia_sarabia10@arwen.berkeley.edu:~/
+  
+# Connect to my SCF account:
+ssh natalia_sarabia10@arwen.berkeley.edu
+
+# Execute my Script with:
+sbatch Obama
+
+# MyScript.py creates a obama_python.csv file, with the grouping by date and hour.
+# I sent back the output to my local machine to make the plots:
+scp natalia_sarabia10@arwen.berkeley.edu:~/obama_python.csv ~/Documents/STAT243/PS6/.
+
+```
+
+```{r 2a, fig.cap = "Obama",out.width = "90%"}
+include_graphics('Obama.png')
+```
+
+I also exported the file obama.pyout and this is the time it took to produce the final output (the .csv):
+```{r, eval=FALSE, code = readLines(file.path('..','PS6/obama.pyout'))}
+```
+The units of this quantity are seconds. Translated into hours, this amount of data took 1.419023 hrs.
+
+Back in my local computer, I can plot the findings:
+```{python}
+# Import required packages
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
+import re
+
+# Read the data
+df = pd.read_csv('~/Documents/STAT243/PS6/obama_python.csv', sep=',')
+df.dtypes
+
+# Change to string type the variable date. This will allow to subset it and
+# extract day, year and month. After that, we convert back to number to be able
+# to use the pd.to_datetime() function:
+df['date'] = df['date'].astype(str)
+df['year'] = pd.to_numeric(df['date'].str[0:4])
+df['month'] = pd.to_numeric(df['date'].str[4:6])
+df['day'] = pd.to_numeric(df['date'].str[6:8])
+
+# Treat the hour variable. By default it is given as an integer, we divide by 10000
+# and also add the field to the function pd.to_datetime():
+df['hour'] = round(df['time'] / 10000)
+
+# Create a variable with the date and time:
+df['time_date'] = pd.to_datetime(df[['year', 'month', 'day', 'hour']],unit='ms').dt.tz_localize('UTC')
+
+# Change the time zone to US/EST
+df['time_date'] = df['time_date'].dt.tz_convert('US/Eastern')
+
+# Just formatting: I will divide the number of hits by 1000 in order to make easier
+# the reading of the 'y' axis:
+df['hits'] = df['hits'] / 1000
+
+# A quick look on how my data set looks like:
+df.head()
+```
+
+I plot my results using Python:
+```{python}
+# Close all the open windows for a plot
+plt.close('all')
+
+# Create the time series plot using a dot as a marker:
+fig, ax = plt.subplots()
+ax.plot_date(df['time_date'],df['hits'], linestyle='-',color='blue',tz='US/Eastern',linewidth = 0.4, ms = 0.2)
+
+# Giving format to the x axis:
+fig.autofmt_xdate()
+ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M'))
+
+# Giving format to the plot in general:
+fig.suptitle('Wikipedia hits containing the string Barack_Obama', fontsize=12)
+plt.xlabel('Time', fontsize=10)
+plt.ylabel('Counts (thousands)', fontsize=10)
+plt.tick_params(labelsize=6)
+
+# Actually show the plot:
+plt.show()
+```
+
+I would like to make a zoom to this graph. Specifically, I would like to analize the behaviour of the hits in a window near the elections. I will filter the data to analyze 3-6 November, 2008 and plot the findings:
+```{python}
+# Filter by day and month
+election = df[((df['day']==3) | (df['day']==4) | (df['day']==5) |
+(df['day']==6)) & (df['month']==11)]
+
+# Close all the open windows for a plot
+plt.close('all')
+
+# Create the time series plot using a dot as a marker:
+fig, ax = plt.subplots()
+ax.plot_date(election['time_date'],election['hits'], marker='.', 
+linestyle='-',color='blue',tz='US/Eastern')
+
+# Giving format to the x axis:
+fig.autofmt_xdate()
+ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M'))
+
+# Giving format to the plot in general:
+fig.suptitle(
+  'Wikipedia hits containing the string Barack_Obama close the election'
+  , fontsize=8)
+plt.xlabel('Time', fontsize=10)
+plt.ylabel('Counts (thousands)', fontsize=10)
+plt.tick_params(labelsize=6)
+
+# Actually show the plot:
+plt.show()
+```
+
+I appears that the number of hits on Wikipedia websites containing the string 'Barack_Obama' increased substantially on the following early morning of the elections (For websites in English).
+
+## Extra credit:
+Remember that another important event occurred in 2008. The financial crisis hit during the 4th quarter of that year. As the time window coincides with the one I have, I will analize the number of hits on webpages containing the string 'Financial_crisis'. I will split the analysis on different time series grouped by language:
+
+I first worked on my Python script in my local computer using Spyder:
+```{r, eval=FALSE, code = readLines(file.path('..','PS6/MyScript_extra.py'))}
+```
+
+I also setup my Extra file that will help me to execute MyScript_extra.py:
+```{r, eval=FALSE, code = readLines(file.path('..','PS6/Extra'))}
+```
+
+I repeated the same steps as in the previous exercise but using my new files:
+```{r, eval = FALSE}
+# While at my local machine, I sent MyScript_extra.py and Extra (batch) to my arwen account:
+scp MyScript_extra.py Extra natalia_sarabia10@arwen.berkeley.edu:~/
+  
+# Connect to my SCF account:
+ssh natalia_sarabia10@arwen.berkeley.edu
+
+# Execute my Script with:
+sbatch Extra
+
+# MyScript_extra.py creates a crisis_python.csv file, with the grouping by date, 
+# time and language. I sent back the output to my local machine to make the plots:
+scp natalia_sarabia10@arwen.berkeley.edu:~/crisis_python.csv ~/Documents/STAT243/PS6/.
+```
+
+```{r 2b, fig.cap = "Extra",out.width = "90%"}
+include_graphics('Extra.png')
+```
+
+```{python}
+# Read the data
+df = pd.read_csv('~/Documents/STAT243/PS6/crisis_python.csv', sep=',')
+df.dtypes
+
+# Change to string type the variable date. This will allow to subset it and
+# extract day, year and month. After that, we convert back to number to be able
+# to use the pd.to_datetime() function:
+df['date'] = df['date'].astype(str)
+df['year'] = pd.to_numeric(df['date'].str[0:4])
+df['month'] = pd.to_numeric(df['date'].str[4:6])
+df['day'] = pd.to_numeric(df['date'].str[6:8])
+
+# Treat the hour variable. By default it is given as an integer, we divide by 10000
+# and also add the field to the function pd.to_datetime():
+df['hour'] = round(df['time'] / 10000)
+
+# Create a variable with the date and time:
+df['time_date'] = pd.to_datetime(df[['year', 'month', 'day', 'hour']],unit='ms').dt.tz_localize('UTC')
+
+# Change the time zone to US/EST
+df['time_date'] = df['time_date'].dt.tz_convert('US/Eastern')
+
+# Just formatting: I will divide the number of hits by 1000 in order to make easier
+# the reading of the 'y' axis:
+df['hits'] = df['hits'] / 1000
+
+# A quick look on how my data set looks like:
+df.head()
+```
+
+I have a table with different languages. I will perform some processing to the data before ploting my final results:
+```{python}
+# I have many languages with variants. I will work on them. First, I will remove the 
+# variant of the language value and then group and count again by the 'new' language
+# variable:
+df['language2'] =  df['language'].apply(lambda x: re.sub(r'\..*','', str(x)))
+
+# Give format to the data frame to make the plot process, easier. I converted it to 
+# what is often called a wider representation. I also filled the NaN with zeroes 
+# to have better graphs:
+crisis = df.groupby(['time_date','language2'])['hits'].sum().reset_index()
+crisis = crisis.pivot_table(index = 'time_date',
+columns = 'language2', values = 'hits').reset_index().fillna(0)
+
+# Close all the open windows for a plot
+plt.close('all')
+
+# Create the time series plot using different markers and colors:
+fig1, axs = plt.subplots(2,2)
+axs[0,0].plot_date(crisis['time_date'],crisis['en'], marker='.', 
+linestyle='-',color='blue',tz='US/Eastern',linewidth = 0.2, ms = 0.2)
+axs[0,1].plot_date(crisis['time_date'],crisis['zh'], marker='^', 
+linestyle='-',color='green',tz='US/Eastern',linewidth = 0.2, ms = 2)
+axs[1,0].plot_date(crisis['time_date'],crisis['es'], marker='+', 
+linestyle='-',color='red',tz='US/Eastern',linewidth = 0.2, ms = 2)
+axs[1,1].plot_date(crisis['time_date'],crisis['de'], marker='x', 
+linestyle='-',color='orange',tz='US/Eastern',linewidth = 0.2, ms = 2)
+
+# Giving format to the x axis:
+fig1.autofmt_xdate()
+axs[0,0].xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M'))
+axs[0,1].xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M'))
+axs[1,0].xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M'))
+axs[1,1].xaxis.set_major_formatter(DateFormatter('%Y-%m-%d %H:%M'))
+
+# Set a title for each subgraph
+axs[0,0].set_title(f'English',fontsize=9)
+axs[0,1].set_title(f'Chinese',fontsize=9)
+axs[1,0].set_title(f'Spanish',fontsize=9)
+axs[1,1].set_title(f'German',fontsize=9)
+    
+# Giving format to the plot in general:
+fig1.suptitle('Wikipedia hits containing the string "Financial_crisis"', fontsize=12)
+
+# Adding title and x and y labels
+fig1.text(0.5, 0.03, '$Time$', ha='center', va='center', fontsize=8)
+fig1.text(0.04, 0.5, '$Counts \  (thousands)$', ha='center', va='center',
+rotation='vertical', fontsize=8)
+
+# Set the size of the labels of both axis for the 4 subplots:
+axs[0,0].tick_params(labelsize=6)
+axs[0,1].tick_params(labelsize=6)
+axs[1,0].tick_params(labelsize=6)
+axs[1,1].tick_params(labelsize=6)
+
+# Show the plot. For a strange reason, I was not able to show the plot. Every time I
+# tried to show this specific plot, the other plots were acting very strange. For this
+# reason, I decided to generate the plot, save it as an image and then call the image.
+# This problem only arise with this plot:
+plt.savefig('extra_plot.png')
+```
+
+I present my findings in the following plot:
+```{r 4a, fig.cap = "Financial crisis",out.width = "70%"}
+include_graphics('extra_plot.png')
+```
+
+Two things are interesting to me. First of all, the webpages on English were, by far
+the most popular. It would be interesting to know if it has something to do that the internet usage was more developed in countries where English is spoken, or if most pages were in English, or there might be another reason. The other interesting aspect is about the times in which we observed the outliers across the languages. I would have thought that they were not very far one from the other (in time), because although different countries have different time zones, a difference of a day would just shift a little bit the graphs.
+
+# Problem 3
+Consider a simulation study that generates m = 100 simulated datasets. The parameter of interest is $\theta$ and in simulating the datasets, we have $\theta$ = 2. The value of 2 is included in 85 of the 95% confidence intervals.  
+
+a. If you’re interested in the coverage of the confidence interval procedure, what is $h(Y_i)$ in this setting? What is the expectation that is of interest here?  
+
+In this case, we are interested in the estimation of a probability, specifically (by the results seen in class):
+
+$h(Y_i) = \mathbbm{1}_{\theta \in CI(Y_i)}$ and the expectation of interest is: $\hat{\phi} = \frac{1}{m} \sum_{i=1}^m \mathbbm{1}_{\theta \in CI(Y_i)}$
+
+b. Based on the Monte Carlo uncertainty of the expectation of interest, do you think you have simulated enough datasets? Note that this is a somewhat subjective judgment.
+
+My first thought was that I would expect to have $\theta$ been included in $\approx 95$ of the intervals. In that case, I believe I don't have enough simulated datasets. So I could run more simulations. But then I talked to one of my classmates (Krissi Alari), and she explained me the following:  
+
+I am actually able to calculate the MC simulation error applying the formula we reviewed in class:
+$\hat{Var}(\hat\theta) = \frac{1}{m(m-1)}\sum_{i=1}^m (h(Y_i)-\hat\theta)^2 = \frac{1}{100*99} (85*(1-0.85)^2+15*(0-0.85)^2) =  0.001287879$  
+
+Let's think about this result. This means that the estimated variance of our estimator is not really big, and therefore with this amount of simulated data, the variance is small and we are still far from the true parameter. This could potentially indicate that even if we increase the amount of simulations, we will not be able to have a 'better' approximation of $\hat\theta$. In any case, if there are no computational constrains, I will increase the number of simulations and see what happens.
+

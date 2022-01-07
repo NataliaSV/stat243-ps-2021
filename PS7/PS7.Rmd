@@ -1,0 +1,242 @@
+---
+title: "Problem Set 7"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+bibliography: bibliography.bib
+author: Natalia Sarabia Vásquez
+header-includes:
+   - \usepackage{float}
+   - \usepackage{hyperref}
+   - \usepackage{tcolorbox}
+   - \usepackage{bbm}
+   - \hypersetup{colorlinks, 
+                 urlcolor = blue,
+                 linkcolor = black, 
+                 citecolor = black}
+output: 
+  pdf_document:
+    citation_package: natbib
+    number_sections: true
+---
+  
+```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
+# Default setting
+knitr::opts_chunk$set(
+  echo = TRUE,  # don't print the code chunk
+  warning = FALSE,  # don't print warnings
+  message = FALSE,  # don't print messages
+  fig.align = "center",  # always align figure in center
+  fig.pos = "H",  # always plot figure at the exact location of the code chunk
+  cache = FALSE)
+
+# load useful libraries
+library(knitr)
+```
+
+# Problem 1
+
+I solved this problem using my SCF account, following these steps:  
+
+1. I wrote an R script called ScriptP1.R  
+2. While in my local machine, I sent my script to my arwen account using scp.   
+3. I executed my script in SCF and saved the output.  
+4. I sent back my output to my computer. I will present the output.  
+
+Here are the instructions I followed on the command line:
+```{r, eval=FALSE, code = readLines(file.path('..','PS7/Instructions'))}
+```
+
+Before I proceed, note that I ensured that A is invertible. I built A as $A = W^TW$ where the elements of the $n \times n$ matrix $W$ are generated independently using rnorm(). I took n = 5000.
+```{r, eval = FALSE}
+n <- 5000
+# By doing this, we ensure that A is positive definite (the square):
+W <- matrix(rnorm(n^2), n)
+
+# By the documentation of the function:
+# Given matrices x and y as arguments, return a matrix cross-product. This is 
+# formally equivalent to (but usually slightly faster than) the call t(x) %*% y 
+# (crossprod). Y = NULL is taken to be the same matrix as x.
+
+# Therefore, it will be enough to do:
+A <- crossprod(W)
+```
+
+```{r 1, fig.cap = "Execution in SCF",out.width = "60%"}
+include_graphics('SCF.png')
+```
+
+I will show the output and omit printing my script here. This because basically my ScriptP1.R is a subset of ScriptP1.out. Here the output from the SCF:
+```{r, eval=FALSE, code = readLines(file.path('..','PS7/ScriptP1.out'))}
+```
+
+## a) Using a single thread, how do the timing and relative ordering amongst methods compare to the order of computations we discussed in class and the notes? Note that if one works out the complexity of the full inversion using the LU decomposition, it is $\frac{4n^3}{3}$.
+
+In class, we have discussed that for the three discussed methods, the order of computations are:  
+1. $\frac{4n^3}{3} + O(n^2)$, this is given in the problem description.  
+2. $\frac{n^3}{3} + O(n^2)$, reviewed in class.    
+3. $\frac{n^3}{6} + O(n^2)$, obtained in question 3 of this problem set.  
+
+If I order them, I will have:
+$\frac{4n^3}{3} > \frac{n^3}{3} > \frac{n^3}{6}$
+
+Therefore, if I compare this ordering, I expect to see that the timing of each one will follow the same order. For convenience in the calculations, I will use as benchmark the time for method 2, because it will imply that I will just need to multiply it by 4 and divide it by 2, to compare to methods 1 and 3, respectively:
+
+```{r}
+time_method1 <- 36.275 
+time_method2 <- 9.715
+time_method3 <- 4.744
+
+# I set time for method 2 as a benchmark:
+time_method2/2
+4 * time_method2
+```
+
+And the resulting comparison is what I was expecting (roughly speaking):  
+
+$36.275 \approx 9.715*4 = 38.86$  
+
+$4.744 \approx 9.715/2 = 4.8575$  
+
+## b) Are the results for x the same numerically for methods (ii) and (iii) (up to machine precision)? Comment on how many digits in the elements of x agree, and relate this to the condition number of the calculation. 
+
+First, if I compare the difference of my results to Machine.double.epsilon, I get that the magnitude of all my differences are actually bigger than this number.  
+
+Now, in class, we reviewed that the precision we would expect to have in our computer is up to 16 digits in general. If I  take the results from ii) and iii) and then substract them, I see that the differences start around the ninth digit, in general, which corresponds to what I was expecting because of the condition number of the matrix. As my condition number is approximately $10^7$, I have accuracy of order $10^{7-16}=10^{-9}$ instead of $10^{-16}$. I can think of the condition number as giving me the number of digits of accuracy lost during a computation relative to the precision of number on the computer: 
+
+```{r}
+# We know that in this case, the condition number is approx 10^7
+527693392
+
+load(file.path('..','PS7/differences.rda'))
+
+# Therefore, we would expect to have an accuracy of 10^(order of the condition-16) digits:
+expected_accuracy <- 7-16
+# Expected digits of accuracy:
+abs(expected_accuracy)
+
+# This goes in line with what I saw in the actual differences. 
+# The majority of them have 9 digits of accuracy:
+dg <- function(x, digits = 20) formatC(x, digits, format = 'f')
+head(dg(differences), n = 10)
+
+# I counted the number of zeroes before the first digit different from zero and in fact in general,
+# the digit different from zero starts after the 9th digit.
+```
+
+# Problem 2
+## Part a)
+I include my thinking process as part of the answer for this problem. When required, I will only use QR decomposition because, as we reviewed in class, is the most efficient given my constrains (I don't know the characteristics of A, which can be non-square or no positive definite, etc.):  
+```{r, echo=F, out.extra="page=1",out.height="85%"}
+knitr::include_graphics(file.path('..','PS7/secondpart.pdf'))
+```
+```{r, echo=F, out.extra="page=2",out.height="90%"}
+knitr::include_graphics(file.path('..','PS7/secondpart.pdf'))
+```
+```{r, echo=F, out.extra="page=3",out.height="90%"}
+knitr::include_graphics(file.path('..','PS7/secondpart.pdf'))
+```
+
+## Part b)
+After setting up my code, I was having some issues to produce my output. I was advised by the professor to be careful with the dimensions and observe that: n needs to be bigger than p and m less than p. Knowing this, I set up my numbers and ran my code:
+
+```{r}
+set.seed(1)
+
+# Define the dimensions of the matrices according to my talk with the professor:
+n <- 25
+m <- 15
+p <- 20
+
+# Create my matrices and vectors:
+A <- matrix(rnorm(m*p),ncol = p, nrow = m)
+X <- matrix(rnorm(n*p),ncol = p, nrow = n)
+Y <- rnorm(n)
+b <- rnorm(m)
+
+# Define my function:
+constrained_ls <- function(A,X,Y,b){
+  # 1. Compute Xt Y
+  d <- crossprod(X,Y)
+  
+  # 2. QR decomposition of X
+  X.qr <- qr(X)
+  
+  # 3. Perform C-1 d
+  R.x <- qr.R(X.qr)
+  E <- backsolve(R.x, backsolve(R.x, d, transpose = TRUE))
+  
+  # 4. Perform -A C-1 d + b
+  g <- -A %*% E + b
+  
+  # 5. Perform D
+  D <- backsolve(R.x,t(A),transpose = TRUE)
+  
+  # 6. QR decomposition of D
+  D.qr <- qr(D)
+  
+  # 7. Perform (A C-1 At)-1
+  R.d <- qr.R(D.qr)
+  h <- backsolve(R.d, backsolve(R.d,g,transpose = TRUE))
+  
+  # 8. Perform the sum
+  result <- E + backsolve(R.x, D %*% h)
+  
+  return(result)
+}
+
+# Test the function:
+yes243result <- constrained_ls(A,X,Y,b)
+
+# See how it looks like
+head(yes243result, n = 10)
+
+# Performing the results by "hand":
+# Save some recurrently used operations:
+C_inv <- solve(crossprod(X))
+d <- crossprod(X,Y)
+
+# Perform the calculation
+not243result <- C_inv %*% d + (C_inv %*% t(A) %*%
+                                 solve(A %*% C_inv %*% t(A)) %*% ((-A %*% C_inv %*% d)+ b))
+
+head(not243result, n = 10)
+
+# Compare that I have the result under both approaches:
+all.equal(yes243result,not243result)
+```
+
+In the last chunk, I made the calculations by "hand" just to verify that my function is working properly. When comparing my results, I actually obtained the same results under both approaches. I called 'yes243result' to the one using matrix decomposition and 'not243results' to the one computing inverses. 
+
+# Problem 3
+Work out the operation count (total number of multiplications plus divisions) for the Cholesky decomposition:
+```{r, echo=F, out.extra="page=1",out.height="90%"}
+knitr::include_graphics(file.path('..','PS7/Problem3.pdf'))
+```
+
+```{r, echo=F, out.extra="page=2",out.height="90%"}
+knitr::include_graphics(file.path('..','PS7/Problem3.pdf'))
+```
+
+```{r, echo=F, out.extra="page=3",out.height="90%"}
+knitr::include_graphics(file.path('..','PS7/Problem3.pdf'))
+```
+
+```{r, echo=F, out.extra="page=4",out.height="90%"}
+knitr::include_graphics(file.path('..','PS7/Problem3.pdf'))
+```
+
+```{r, echo=F, out.extra="page=5",out.height="90%"}
+knitr::include_graphics(file.path('..','PS7/Problem3.pdf'))
+```
+Compare your result to that given in the notes.
+
+In the notes, we are told that the $\frac{n^3}{6} + O(n^2)$. My results are consistent with the computational complexity (order) discussed in class (I obtained the same order of operations $O(n^3)$, although more detailed).
+
+# Extra credit
+
+```{r, echo=F, out.extra="page=4",out.height="90%"}
+knitr::include_graphics(file.path('..','PS7/secondpart.pdf'))
+```
+
+```{r, echo=F, out.extra="page=5",out.height="90%"}
+knitr::include_graphics(file.path('..','PS7/secondpart.pdf'))
+```
